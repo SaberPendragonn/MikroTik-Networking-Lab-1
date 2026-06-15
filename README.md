@@ -1,3 +1,9 @@
+
+
+https://github.com/user-attachments/assets/3349bb00-54f2-491d-a717-14324b2cf89e
+
+
+
 # Dual-WAN Enterprise Gateway: PCC Load Balancing & Recursive Routing Failover
 ### *Engineered a Per-Connection Classifier (PCC) Load Balancing fabric with Layer 7 Session Stickiness and Recursive Gateway for Multi-ISP High-Availability.*
 
@@ -44,7 +50,7 @@ Anchored connection tracking boundaries across the Mangle table to prevent multi
 
 **What happened:** The PCC hashing engine successfully identified the unique source/destination address. Connection Marks inside the WinBox tracking confirmed that the VLAN 10 client was hashed to ISP 1, while the VLAN 20 client was concurrently hashed to ISP 2, proving successful load distribution across the multi-WAN fabric. Note that one session opens multiple connections so it is normal for one IP to hash to different ISPs.
 
-
+https://github.com/user-attachments/assets/d7eb6e7e-eb9b-46ef-8715-504ab217f935
 
 ---
 
@@ -55,10 +61,16 @@ Anchored connection tracking boundaries across the Mangle table to prevent multi
 **What happened:** Different browser tabs successfully hashed to different ISPs (Tab A showed ISP 1's public IP, Tab B showed ISP 2's public IP). Despite multiple heavy refreshes, each specific session remained pinned to its respective ISP, confirming that PCC prevents session-reset issues.
 
 
+https://github.com/user-attachments/assets/e8a3f087-f044-4a2f-a748-1ebdb17bdb49
+
 
 ---
 
-### Test 3: ECMP vs. PCC - Debunking the Round-Robin Myth and why PCC is better!
+### Test 3: ECMP vs. PCC - Debu
+
+https://github.com/user-attachments/assets/88eb263d-1e32-409d-9b0d-9b2196860f04
+
+nking the Round-Robin Myth and why PCC is better!
 
 **What I did:** Switched the core routing configuration to Equal-Cost Multi-Path (ECMP) to analyze the differences in traffic hashing under stress compared to PCC.
 
