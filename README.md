@@ -15,7 +15,7 @@ If a router uses simple Round-Robin packet distribution like the default PFIFO, 
 
 Furthermore, if the ISP's physical modem stays "Up" but their internal network loses internet connectivity, a standard router remains "blind" to the failure and continues sending packets into a black hole.
 
-I engineered a solution that ensures both High-Speed Aggregation and Intelligent Self-Healing:
+I engineered a solution that ensures both LOad Blancing and Intelligent Recursive Self-Healing:
 
 1. **PCC Hashing & Stickiness:** I utilized the PCC matcher to hash traffic based on source/destination IPs. This ensures that once a session is established on ISP 1 or ISP 2, it "sticks" there, preserving stateful connections while allowing different client connections to utilize the full capacity of both ISPs.
 
@@ -36,7 +36,7 @@ Anchored connection tracking boundaries across the Mangle table to prevent multi
 
 ---
 
-## 🧪 The Proof
+## The Proof
 
 ### Test 1: Multi-Client PCC Hashing Verification
 
@@ -145,4 +145,4 @@ By combining PCC's granular hashing with the "intelligent" health checks of recu
 
 **Path Engineering:** Policy-Based Routing (PBR) via IP Mangle rules to enforce path affinity and avoid asymmetric routing breaks
 
-*Ninth project down. More to come.* 🔥
+*Second project down. More to come.* 🔥
