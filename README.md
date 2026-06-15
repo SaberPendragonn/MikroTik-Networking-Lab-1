@@ -1,5 +1,5 @@
-# 🌐 Dual-WAN Edge: PCC Load Balancing + Recursive Route Failover
-### *My Second Project as a Network Engineer*
+# Dual-WAN Enterprise Gateway: PCC Load Balancing & Recursive Routing Failover
+### *My Ninth Project as a Network Engineer*
 
 > Don't trust an ISP just because the cable is plugged in.
 
@@ -9,10 +9,11 @@
 
 ![Network Topology](https://YOUR-IMAGE-HOST.com/topology.png)
 
-**Edge Layer:** Dual WAN Connections (ISP1 on Eth1, ISP2 on Eth2)  
-**Core Gateway:** Core Router handling Policy-Based Routing (PBR)  
-**Failover Stack:** Connection Marking + Routing Tables + Multi-Hop ICMP Recursive Probes  
-**Segmentation:** Isolated local subnets via Pre-Routing Mangle Rules
+**Traffic Distribution Engine:** Per-Connection Classifier (PCC) using both-addresses-and-ports hashing for granular flow distribution
+
+**Failover Mechanism:** Recursive Route Lookups utilizing global DNS (8.8.8.8 / 1.1.1.1) as scope targets to verify true end-to-end internet reachability beyond the immediate ISP gateway
+
+**Path Engineering:** Policy-Based Routing (PBR) via IP Mangle rules to enforce path affinity and avoid asymmetric routing breaks
 
 ---
 
@@ -20,129 +21,131 @@
 
 Okay so here's the scenario:
 
-Most multi-WAN networks run basic failover or simple static routes. The problem? Standard routing only checks if the physical cable to your ISP modem is plugged in.
+Standard Dual-WAN setups often suffer from two critical flaws: Asymmetric Session Breaks and "Ghost" Gateway Failures.
 
-That's it. Just the cable.
+If a router uses simple Round-Robin packet distribution, secure websites (HTTPS/Banking) will drop the session because the source IP appears to flip-flop every second.
 
-If the ISP has a massive backhaul outage deeper in their network but their modem stays powered on? Your router has no idea. It keeps sending data into a black hole. Users think the internet is down. Chaos.
+Furthermore, if the ISP's physical modem stays "Up" but their internal network loses internet connectivity, a standard router remains "blind" to the failure and continues sending packets into a black hole.
 
-For this project, I wanted two things:
+I engineered a solution that ensures both High-Speed Aggregation and Intelligent Self-Healing:
 
-1. **Both ISPs working at the same time** – No idle backup wasting bandwidth
-2. **Real health checks** – Not just "is the cable plugged in?"
+1. **PCC Hashing & Stickiness:** I utilized the PCC matcher to hash traffic based on source/destination IPs and ports. This ensures that once a session is established on ISP 1, it "sticks" there, preserving stateful connections while allowing different clients (or different browser tabs) to utilize the full capacity of both ISPs.
 
-So I built a Dual-WAN architecture where:
-- Traffic splits 50/50 across both ISPs
-- Each ISP gets checked past the modem—all the way to the actual internet
-- If one dies, traffic shifts instantly
-
-Every megabit of bandwidth earns its keep.
+2. **Recursive Monitoring:** I decoupled the route "Check-Gateway" from the ISP's local IP. By routing toward a virtual target (like Google DNS) via the specific ISP gateway, the router only considers the path "Active" if it can reach the actual internet. If the path fails, the routing table dynamically pivots all traffic to the healthy ISP within seconds.
 
 ---
 
 ## 🛠️ Performance Highlights
 
-**Policy-Based Mangle Architecture**  
-Developed a structured mangle pipeline that separates local subnet exceptions from outbound traffic. Internal routing takes priority before any WAN load-balancing happens.
+**Granular Multi-WAN Hashing**  
+Deployed a complete PCC engine capable of tracking separate network streams and dynamically sharing the transport load based on client transport definitions.
 
-**Symmetric Traffic Splitting (PCC)**  
-Engineered a 2-stream Per-Connection Classifier splitting traffic cleanly down Remainder 0 (ISP1) and Remainder 1 (ISP2). Effectively doubled edge backplane utilization.
+**Failover Verification**  
+Constructed a multi-hop recursive routing path that targets global web nodes to prevent gateway blackholing during upstream carrier outages.
 
-**Upstream Blackhole Elimination**  
-Deployed independent virtual routing tables (ISP1 and ISP2) mapped to multi-hop recursive paths. Replaced interface-dependent failover with active, off-net ICMP path tracking.
-
-**Inbound State Alignment**  
-Configured input chain tracking to catch new incoming connections on Eth1 and Eth2. Locked output routing marks to the matching interface. Preserved external access states.
+**Session-State Enforcement**  
+Anchored connection tracking boundaries across the Mangle table to prevent multi-WAN packet reordering and keep secure user connections stable.
 
 ![PCC Load Balancing Demo](https://github.com/user-attachments/assets/0a27f1f6-234f-4fe4-9e7e-617283c09e23)
 
 ---
 
-## 🧪 The Proof: Validation Tests
+## 🧪 The Proof
 
-### Test 1: The Upstream Interdiction (Recursive Failover)
+### Test 1: Multi-Client PCC Hashing Verification
 
-**What I did:** Simulated a backhaul ISP outage by disconnecting the upstream fiber link past the ISP-1 edge router. Kept the local physical link on Eth1 completely active.
+**What I did:** Monitored the IP Mangle table and Connection Tracker while initiating concurrent traffic from two distinct Kali Linux clients running on VLAN 10 and VLAN 20.
 
-**What happened:** Standard static routing kept the interface active. But the recursive engine immediately noticed 1.1.1.1 stopped responding to ICMP probes. Within 3 dropped pings, Table ISP1 dynamically deactivated the dead primary route.
+**What happened:** The PCC hashing engine successfully identified the unique source/destination pairs. Connection Marks inside the WinBox tracking suite confirmed that the VLAN 10 client was hashed to ISP 1, while the VLAN 20 client was concurrently hashed to ISP 2, proving successful load distribution across the multi-WAN fabric.
 
-**The win:** Because of backup routes built into the specialized tables (Distance=2), traffic mapped to the ISP1 table instantly rerouted out of Eth2. No waiting for the physical interface to go down.
-
-![Recursive Failover Test](https://YOUR-IMAGE-HOST.com/recursive-failover.gif)
+![PCC Hashing](https://YOUR-IMAGE-HOST.com/pcc-hashing.gif)
 
 ---
 
-### Test 2: Bandwidth Maximization (PCC Balancing)
+### Test 2: Public IP Hashing & Session Stickiness
 
-**What I did:** Launched multiple high-bandwidth download streams across different internal client machines.
+**What I did:** Opened multiple independent browser sessions on a single host to query Public IP discovery websites and repeatedly refreshed the pages to verify session persistence.
 
-**What happened:** Monitored real-time traffic graphs. Traffic split evenly across Eth1 and Eth2. Both connections handling data simultaneously. No idle link.
+**What happened:** Different browser tabs successfully hashed to different ISPs (Tab A showed ISP 1's public IP, Tab B showed ISP 2's). Despite multiple heavy refreshes, each specific session remained pinned to its respective ISP, confirming that PCC maintains stateful affinity and prevents session-reset issues.
 
-![PCC Bandwidth Split](https://YOUR-IMAGE-HOST.com/pcc-balancing.gif)
-
----
-
-### Test 3: Symmetrical Inbound Reply (State Tracking)
-
-**What I did:** Sent external remote-management probes directly to the WAN IP of Eth2 while Eth1 was designated as the primary routing table path.
-
-**What happened:** Router successfully processed the connection tracking rules. Reply packets bypassed the default routing table and exited directly back out of Eth2. No upstream carrier drop-offs from asymmetric path mismatches.
-
-![Inbound State Tracking](https://YOUR-IMAGE-HOST.com/symmetric-reply.png)
+![Session Stickiness](https://YOUR-IMAGE-HOST.com/session-stickiness.gif)
 
 ---
 
-### Test 4: The Local Isolation Layer (Mangle Acceptance)
+### Test 3: ECMP vs. PCC - Debunking the Round-Robin Myth
 
-**What I did:** Executed an internal inter-subnet file transfer from VLAN 10 to VLAN 20 while running continuous WAN balancing.
+**What I did:** Switched the core routing configuration to Equal-Cost Multi-Path (ECMP) to analyze the differences in traffic hashing under stress compared to PCC.
 
-**What happened:** Packet counters on the initial Pre-Routing Mangle chain hit the accept rule instantly. Traffic remained internal at line-rate speed. 0% of local packets pushed out to internet interfaces.
+**What happened:** Testing successfully debunked a common networking myth. Many assume ECMP sends packets via simple, alternating round-robin distribution which breaks active sessions on a refresh. In reality, once an ECMP connection is established, it hashes and sticks to that single ISP. When the webpage was refreshed, the session remained completely sticky on its path, proving ECMP keeps connection stickiness intact but lacks the granular control over specific traffic profiles that PCC provides through Mangle rules.
 
-![Local Isolation Test](https://YOUR-IMAGE-HOST.com/local-traffic.png)
+![ECMP vs PCC](https://YOUR-IMAGE-HOST.com/ecmp-vs-pcc.png)
+
+---
+
+### Test 4: Recursive Route Failover Dynamics & Convergence Timing
+
+**What I did:** Simulated a "Ghost" gateway failure by creating an explicit packet drop rule for the recursive targets (8.8.8.8 and 1.1.1.1) on ISP 1 while keeping the physical gateway interface active, using a high-frequency ping (0.1s interval) to measure the exact failover time.
+
+**What happened:** Without recursive routing, the connections became confused and packets were dropped into an active black hole because the router thought the up-state interface was healthy.
+
+With recursive routing active, the router detected the loss of 8.8.8.8/1.1.1.1 reachability. Traceroute logs showed the path initially exiting via ISP 1, then dynamically shifting to ISP 2 the moment the recursive check failed. The high-frequency ping recorded 340 dropped packets and 56 received during the transition. This calculated to a total failover convergence time of exactly **~28.4 seconds** for the check-gateway timeout and routing table recalculation to complete.
+
+| Load Balancing Profile | Connection Integrity | State Path Failure Action | Total Convergence Time |
+|------------------------|---------------------|---------------------------|------------------------|
+| Standard Static Route | Broken / Session Blackhole | None (Stuck to Local GW) | Infinite Timeout |
+| Recursive Routing | Sticky / Re-Routed | Pivots to Healthy WAN | ~28.4 Seconds |
+
+![Recursive Failover](https://YOUR-IMAGE-HOST.com/recursive-failover.gif)
 
 ---
 
 ## 🚧 Engineering Challenges
 
-**The Mangle Pipeline Logic (passthrough rules)**
+**The Asymmetric Return-Path Conflict**
 
-Managing packet markings can get messy fast. If a routing mark overwrites a connection mark prematurely, the load balancing logic completely breaks down.
+**Challenge:** Packets entering from ISP 2 were being responded to via the Default Route (ISP 1), causing the ISP to drop the "unsolicited" traffic.
 
-**How I solved it:** Enforced strict architectural rules inside the RouterOS Mangle table. Set `passthrough=YES` on all connection-marking rules so packets could continue down the chain to be evaluated. Explicitly declared `passthrough=NO` the moment a final routing table mark (ISP1 or ISP2) was stamped. Stopped unnecessary processing. Sped up CPU cycles.
+**How I solved it:** Implemented Policy-Based Routing (PBR) by marking connections as they entered specific WAN interfaces. I then used routing-marks to ensure that any packet belonging to a connection that started on ISP 2 was forced to exit through ISP 2, regardless of the default routing distance.
 
-**Recursive Scope Deadlocks**
+**Recursive Target Selection**
 
-During initial recursive setup, the router can enter a routing loop. It tries to look up the monitor target using the target itself. The route flaps or goes invalid.
+**Challenge:** Using a single recursive target (e.g., only 8.8.8.8) created a single point of failure; if 8.8.8.8 went down, the ISP was marked "Dead" even if the internet was fine.
 
-**How I solved it:** Overrode the default routing scopes to create a clean logical hierarchy. Configured virtual monitoring routes (0.0.0.0/0 via 1.1.1.1) to look deep with Target Scope=30. Anchored the actual physical next-hop gateway (1.1.1.1 via ISP Edge IP) strictly to Scope=10. This lets the recursive engine safely resolve the virtual target over the concrete physical link.
+**How I solved it:** Configured Dual-Target Recursion. The router monitors both 8.8.8.8 and 1.1.1.1 via separate virtual routes. This ensures that the ISP path is only marked inactive if both global DNS providers become unreachable, preventing false-positive failover events.
+
+---
+
+## 📊 Summary
+
+| Component | Configuration | Why |
+|-----------|---------------|-----|
+| **PCC Hashing** | both-addresses-and-ports | Session stickiness across multiple ISPs |
+| **Recursive Routing** | 8.8.8.8 + 1.1.1.1 monitoring | Prevents "ghost" gateway failures |
+| **PBR Mangle Rules** | Connection marking per WAN | Enforces symmetric return path |
+| **Failover Time** | ~28.4 seconds | Self-healing without manual intervention |
 
 ---
 
 ## 💡 Final Thoughts
 
-Edge architecture shouldn't trust an ISP blindly.
+This project demonstrates the necessity of path-aware load balancing in modern networks.
 
-Setting up basic active-passive failover where a secondary internet link sits dark? That's a junior configuration. It leaves bandwidth on the table. It fails when upstream networks break silently.
+By combining PCC's granular hashing with the "intelligent" health checks of recursive routing, I've built a network that not only doubles available bandwidth but also self-heals during complex ISP outages that would leave standard configurations paralyzed.
 
-Active-Active Dual-WAN with recursive checking is **real engineering**. It forces you to:
-- Manipulate routing tables directly
-- Manage packet markings at granular level
-- Build an edge that dynamically assesses network health based on actual path reality
+**The Metric That Matters: Failover Convergence Time**
 
-**The Metric That Matters: Dynamic Gateways**
-
-I audited the active flags in the WinBox routing list during a simulated backhaul drop. The recursive engine kept data moving. Users saw 100% uptime regardless of provider instability.
+I measured this by simulating a "ghost" outage while running high-frequency pings. Standard static routes would have failed indefinitely. Recursive routing detected the upstream loss and pivoted traffic within ~28.4 seconds.
 
 **Why This Matters to an Employer:**
 
-Most engineers stop at "does the link work?" I ask "does the path work?"
+Most engineers set up Dual-WAN with basic failover. They test by unplugging the cable. That's not good enough.
 
-Physical link up doesn't mean internet up. I've seen ISPs stay "connected" while dropping every packet past their first hop.
+I test the hard way. The ISP modem is up. The link light is green. But the internet is dead. My router knows the difference.
 
-My edge doesn't trust lights. It trusts the actual route to 1.1.1.1. If that dies, traffic moves. No black holes. No user complaints.
+28 seconds of disruption might be acceptable. Or it might not. The point is: **I know the number.** And I know how to tune it.
 
-That's the difference between availability and reliability.
+That's the difference between "it works" and "it's engineered."
 
 ---
 
-*Second project down. More to come.* 🔥
+*Ninth project down. More to come.* 🔥
